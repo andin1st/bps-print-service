@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # =============================================================================
-# BPS Oneliner-Script: Automated Installer (Version 4)
+# BPS Oneliner-Script: Automated Installer (Version 5 - Ultimate)
 # Features: 
-#   1. Automatic distro detection & Wine installation
-#   2. Installs a global /usr/local/bin/bps-run wrapper for INSTANT execution
-#   3. Adds shell alias fallback in .bashrc and .zshrc
+#   1. Automatic distro detection & Wine installation (Fedora, Debian, Ubuntu, Arch)
+#   2. Downloads BPS.exe and appsettings.json from GitHub using curl (No Git needed!)
+#   3. Installs a global /usr/local/bin/bps-run wrapper for INSTANT execution
+#   4. Adds shell alias fallback in .bashrc and .zshrc
 # No "source ~/.bashrc" required! Works instantly after installation.
 # =============================================================================
 
@@ -24,11 +25,11 @@ error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 check_root() {
     if [[ $EUID -ne 0 ]]; then
         error "Skrip ini harus dijalankan dengan hak akses root (sudo)."
-        echo "  Gunakan perintah: sudo ./install.sh"
+        echo "  Gunakan perintah: curl -sSL https://raw.githubusercontent.com/andin1st/bps-print-service/main/install.sh | sudo bash"
         exit 1
     fi
     if [[ -z "${SUDO_USER:-}" ]]; then
-        error "Mohon jalankan skrip ini menggunakan 'sudo ./install.sh', bukan langsung login sebagai root."
+        error "Mohon jalankan skrip ini menggunakan 'sudo bash', bukan langsung login sebagai root."
         exit 1
     fi
 }
@@ -46,38 +47,101 @@ detect_distro() {
     info "Mendeteksi distribusi sistem operasi: ${DISTRO_ID}"
 }
 
-# 3. Instal Wine dan dependensi yang sesuai untuk distro target
-install_wine() {
-    info "Memulai instalasi Wine dan dependensi pendukung..."
+# 3. Instal Wine, curl, dan dependensi yang sesuai untuk distro target
+install_dependencies() {
+    info "Memulai instalasi Wine, Curl, dan dependensi pendukung..."
     
+    # Deteksi Fedora
     if [[ "$DISTRO_ID" == "fedora" ]]; then
         info "Menjalankan instalasi paket untuk Fedora..."
-        dnf install -y wine wine-mono mingw32-wine-gecko mingw64-wine-gecko
+        dnf install -y wine wine-mono mingw32-wine-gecko mingw64-wine-gecko curl
         
+    # Deteksi Debian / Ubuntu / Linux Mint / Pop!_OS
     elif [[ "$DISTRO_ID" == "debian" || "$DISTRO_ID" == "ubuntu" || "$DISTRO_LIKE" == *"debian"* || "$DISTRO_LIKE" == *"ubuntu"* ]]; then
         info "Menjalankan instalasi paket untuk Debian/Ubuntu..."
         apt-get update
-        apt-get install -y wine wine-mono wine-gecko
+        apt-get install -y wine wine-mono wine-gecko curl
         
+        # Opsional: Instal fonts Microsoft jika tersedia di sistem
         if apt-cache show ttf-mscorefonts-installer &>/dev/null; then
             info "Menginstal ttf-mscorefonts-installer..."
             echo ttf-mscorefonts-installer msttcorefontshandler/accepted-mscorefonts-eula select true | debconf-set-selections || true
-            apt-get install -y ttf-mscorefonts-installer || warn "Gagal menginstal font Microsoft Core Fonts."
+            apt-get install -y ttf-mscorefonts-installer || warn "Gagal menginstal font Microsoft Core Fonts, instalasi BPS akan tetap dilanjutkan."
         fi
 
+    # Deteksi Arch Linux / Manjaro
     elif [[ "$DISTRO_ID" == "arch" || "$DISTRO_LIKE" == *"arch"* ]]; then
         info "Menjalankan instalasi paket untuk Arch Linux..."
-        pacman -Syu --noconfirm wine wine-mono wine-gecko
+        pacman -Syu --noconfirm wine wine-mono wine-gecko curl
 
     else
         warn "Distribusi Linux Anda (${DISTRO_ID}) tidak terdaftar secara resmi."
-        warn "Pastikan 'wine', 'wine-mono', dan 'wine-gecko' sudah terpasang."
+        warn "Pastikan 'wine', 'wine-mono', 'wine-gecko', dan 'curl' sudah terpasang secara manual."
+        read -p "Apakah Anda ingin tetap melanjutkan instalasi? [y/N]: " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            info "Instalasi dibatalkan oleh pengguna."
+            exit 1
+        fi
     fi
     
-    info "Wine dan dependensi pendukung berhasil dikonfigurasi."
+    info "Semua dependensi berhasil dikonfigurasi."
 }
 
-# 4. Buat Perintah Global & Konfigurasi Alias
+# 4. Pengaturan Direktori dan Pengunduhan Berkas BPS via Curl
+download_app() {
+    REAL_USER="$SUDO_USER"
+    USER_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
+    
+    APP_DIR="$USER_HOME/bps-print-service"
+    
+    # URL Unduhan
+    BPS_EXE_URL="https://github.com/andin1st/bps-print-service/releases/latest/download/BPS.exe"
+    APP_SETTINGS_URL="https://raw.githubusercontent.com/andin1st/bps-print-service/main/appsettings.json"
+
+    info "Mengonfigurasi direktori aplikasi untuk user: ${REAL_USER}"
+    info "Target folder aplikasi: ${APP_DIR}"
+
+    # Buat direktori dengan permission milik user asli
+    sudo -u "$REAL_USER" mkdir -p "$APP_DIR"
+
+    # Unduh berkas konfigurasi appsettings.json jika belum ada
+    if [[ ! -f "$APP_DIR/appsettings.json" ]]; then
+        info "Mengunduh file konfigurasi appsettings.json..."
+        sudo -u "$REAL_USER" curl -L -s -o "$APP_DIR/appsettings.json" "$APP_SETTINGS_URL"
+    else
+        info "Berkas appsettings.json sudah ada, melewati pengunduhan."
+    fi
+
+    # Unduh berkas utama BPS.exe dari GitHub Releases
+    info "Mengunduh berkas biner BPS.exe (90 MB) dari GitHub Releases..."
+    info "Ini mungkin memakan waktu beberapa saat tergantung kecepatan internet..."
+    
+    # Jalankan curl sebagai user asli agar hak kepemilikan file benar
+    if ! sudo -u "$REAL_USER" curl -L -# -o "$APP_DIR/BPS.exe" "$BPS_EXE_URL"; then
+        error "Gagal mengunduh BPS.exe!"
+        error "Pastikan Anda sudah mengunggah BPS.exe ke rilis terbaru (GitHub Releases) di repositori Anda."
+        exit 1
+    fi
+
+    # Verifikasi ukuran file unduhan untuk memastikan bukan file pointer LFS atau error 404 HTML
+    FILE_SIZE=$(wc -c <"$APP_DIR/BPS.exe")
+    if [[ $FILE_SIZE -lt 100000 ]]; then
+        error "File BPS.exe yang terunduh rusak atau terlalu kecil ($FILE_SIZE bytes)."
+        error "Kemungkinan penyebab:"
+        error "1. BPS.exe belum diunggah sebagai 'Asset' di GitHub Releases Anda."
+        error "2. Tautan rilis tidak valid atau belum dipublikasikan sebagai 'Public'."
+        error "Silakan buat Release baru di https://github.com/andin1st/bps-print-service/releases dan unggah BPS.exe di sana."
+        rm -f "$APP_DIR/BPS.exe"
+        exit 1
+    fi
+
+    # Atur kepemilikan agar menjadi milik user biasa (bukan root)
+    chown -R "$REAL_USER:$REAL_USER" "$APP_DIR"
+    chmod +x "$APP_DIR/BPS.exe"
+}
+
+# 5. Buat Perintah Global & Konfigurasi Alias
 setup_shortcuts() {
     REAL_USER="$SUDO_USER"
     USER_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
@@ -103,12 +167,12 @@ EOF
     # BACKUP ALIAS (Opsional untuk integrasi shell .bashrc / .zshrc)
     # -------------------------------------------------------------------------
     info "Mendaftarkan alias cadangan ke berkas konfigurasi shell..."
-    ALIAS_CMD="alias bps-run=\"cd \$HOME/bps-print-service && DISPLAY=:0 nohup wine BPS.exe > /tmp/bps.log 2>&1 &\""
+    ALIAS_CMD="alias bps-run=\\\"cd \$HOME/bps-print-service && DISPLAY=:0 nohup wine BPS.exe > /tmp/bps.log 2>&1 &\\\""
     
     # Daftarkan ke .bashrc jika ada
     if [[ -f "$USER_HOME/.bashrc" ]]; then
         if ! grep -q "alias bps-run=" "$USER_HOME/.bashrc"; then
-            echo "$ALIAS_CMD" >> "$USER_HOME/.bashrc"
+            echo -e "\n# BPS Print Service Alias\n$ALIAS_CMD" >> "$USER_HOME/.bashrc"
             chown "$REAL_USER:$REAL_USER" "$USER_HOME/.bashrc"
             info "Alias ditambahkan ke $USER_HOME/.bashrc"
         fi
@@ -117,18 +181,33 @@ EOF
     # Daftarkan ke .zshrc jika ada
     if [[ -f "$USER_HOME/.zshrc" ]]; then
         if ! grep -q "alias bps-run=" "$USER_HOME/.zshrc"; then
-            echo "$ALIAS_CMD" >> "$USER_HOME/.zshrc"
+            echo -e "\n# BPS Print Service Alias\n$ALIAS_CMD" >> "$USER_HOME/.zshrc"
             chown "$REAL_USER:$REAL_USER" "$USER_HOME/.zshrc"
             info "Alias ditambahkan ke $USER_HOME/.zshrc"
         fi
     fi
 }
 
+# 6. Inisialisasi Prefiks Wine sebagai User Biasa
+init_wine_prefix() {
+    REAL_USER="$SUDO_USER"
+    info "Melakukan inisialisasi Wine Prefix untuk user '${REAL_USER}' agar berjalan lancar..."
+    sudo -u "$REAL_USER" env DISPLAY=:0 wineboot --init
+}
+
 print_summary() {
+    REAL_USER="$SUDO_USER"
+    USER_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
+    APP_DIR="$USER_HOME/bps-print-service"
+    LOG_FILE="/tmp/bps.log"
+
     echo ""
     echo -e "${GREEN}=======================================================${NC}"
     info "Instalasi Selesai dengan Sukses!"
     echo -e "${GREEN}=======================================================${NC}"
+    echo ""
+    echo "  Folder Aplikasi   :  $APP_DIR"
+    echo "  Berkas Log        :  $LOG_FILE"
     echo ""
     echo "  Layanan printer Anda sekarang siap digunakan."
     echo "  Anda bisa langsung mengetik perintah berikut di terminal ini:"
@@ -142,8 +221,10 @@ print_summary() {
 main() {
     check_root
     detect_distro
-    install_wine
+    install_dependencies
+    download_app
     setup_shortcuts
+    init_wine_prefix
     print_summary
 }
 
