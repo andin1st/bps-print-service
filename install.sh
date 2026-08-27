@@ -67,7 +67,7 @@ install_wine() {
             apt-get install -y -qq wine wine-mono wine-gecko
             ;;
         dnf)
-            dnf install -y wine wine-mono wine-gecko
+            dnf install -y wine wine-mono mingw32-wine-gecko mingw64-wine-gecko
             ;;
         zypper)
             zypper install -y wine wine-mono wine-gecko
@@ -77,7 +77,7 @@ install_wine() {
     if ! command -v wine &>/dev/null; then
         error "Wine installation failed. Please install manually:"
         echo "  Debian/Ubuntu: sudo apt install wine wine-mono wine-gecko"
-        echo "  Fedora:        sudo dnf install wine wine-mono wine-gecko"
+        echo "  Fedora:        sudo dnf install wine wine-mono mingw32-wine-gecko mingw64-wine-gecko"
         echo "  Arch:          sudo pacman -S wine wine-mono wine-gecko"
         exit 1
     fi
