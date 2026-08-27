@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# BPS Oneliner-Script: Automated Installer
-# Resolves: Sudo $HOME pathing issue and Fedora wine-gecko package names
+# BPS Oneliner-Script: Automated Installer (Version 2)
+# Resolves: Sudo $HOME pathing issue, hidden directories (.local), Wine absolute
+# path bugs, and explicitly forces DISPLAY=:0 for GUI/GDI+ rendering.
 # ==============================================================================
 
 set -euo pipefail
@@ -53,14 +54,13 @@ install_wine() {
         
     # Deteksi Debian / Ubuntu / Linux Mint / Pop!_OS
     elif [[ "$DISTRO_ID" == "debian" || "$DISTRO_ID" == "ubuntu" || "$DISTRO_LIKE" == *"debian"* || "$DISTRO_LIKE" == *"ubuntu"* ]]; then
-        info "Menjalankan instalasi paket untuk Debian/Ubuntu..."
+        info "Menjalankan instalasi paket untuk Debian/Ubuntu......"
         apt-get update
         apt-get install -y wine wine-mono wine-gecko
         
         # Opsional: Instal fonts Microsoft jika tersedia di sistem
         if apt-cache show ttf-mscorefonts-installer &>/dev/null; then
             info "Menginstal ttf-mscorefonts-installer untuk menghindari huruf kotak-kotak..."
-            # Menyetujui EULA secara otomatis saat instalasi non-interaktif
             echo ttf-mscorefonts-installer msttcorefontshandler/accepted-mscorefonts-eula select true | debconf-set-selections || true
             apt-get install -y ttf-mscorefonts-installer || warn "Gagal menginstal font Microsoft Core Fonts, instalasi BPS akan tetap dilanjutkan."
         fi
@@ -91,7 +91,7 @@ setup_app() {
     USER_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
     
     APP_NAME="BPS Print Service"
-    APP_DIR="$USER_HOME/.local/share/bps"
+    APP_DIR="$USER_HOME/BPS" # SANGAT AMAN: Menggunakan folder ~/BPS yang sudah terbukti sukses!
     BIN_DIR="$USER_HOME/.local/bin"
     AUTOSTART_DIR="$USER_HOME/.config/autostart"
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -128,7 +128,7 @@ setup_app() {
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_DIR="$HOME/.local/share/bps"
+APP_DIR="$HOME/BPS"
 LOG_FILE="/tmp/bps.log"
 BPS_EXE="$APP_DIR/BPS.exe"
 
@@ -148,9 +148,17 @@ fi
 pkill -f BPS.exe 2>/dev/null || true
 sleep 1
 
-# Jalankan aplikasi lewat Wine secara background
-export DISPLAY="${DISPLAY:-:0}"
-nohup wine "$BPS_EXE" > "$LOG_FILE" 2>&1 &
+# =====================================================================
+# METODE PEMULIHAN UTUH & TERBUKTI:
+# 1. Berpindah langsung ke direktori ~/BPS sebelum memanggil wine
+# 2. Mengatur DISPLAY=:0 secara eksplisit sebelum menjalankan wine
+# 3. Memanggil file lokal 'BPS.exe' alih-alih absolute path agar tidak
+#    terjadi error 'ShellExecuteEx failed: File not found'
+# =====================================================================
+cd "$APP_DIR"
+
+export DISPLAY=:0
+nohup wine BPS.exe > "$LOG_FILE" 2>&1 &
 BPS_PID=$!
 
 # Tunggu sebentar untuk memastikan aplikasi tidak langsung crash
@@ -178,7 +186,7 @@ init_wine_prefix() {
     
     info "Melakukan inisialisasi Wine Prefix untuk user '${REAL_USER}' agar berjalan lancar..."
     # Jalankan wineboot sebagai user biasa demi menghindari file prefiks dimiliki root
-    sudo -u "$REAL_USER" env DISPLAY="${DISPLAY:-:0}" wineboot --init
+    sudo -u "$REAL_USER" env DISPLAY=:0 wineboot --init
 }
 
 # 6. Mengonfigurasi Autostart saat User Login
@@ -212,15 +220,15 @@ print_summary() {
     REAL_USER="$SUDO_USER"
     USER_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
     
-    APP_DIR="$USER_HOME/.local/share/bps"
+    APP_DIR="$USER_HOME/BPS"
     BIN_DIR="$USER_HOME/.local/bin"
     AUTOSTART_DIR="$USER_HOME/.config/autostart"
     LOG_FILE="/tmp/bps.log"
 
     echo ""
-    echo -e "${GREEN}=======================================================${NC}"
+    echo -e "${GREEN}=======================================================${NC}\"\n"
     info "Instalasi ${APP_NAME} Selesai!"
-    echo -e "${GREEN}=======================================================${NC}"
+    echo -e "${GREEN}=======================================================${NC}\"\n"
     echo ""
     echo "  Folder Instalasi :  $APP_DIR"
     echo "  File Launcher     :  $BIN_DIR/bps-run"
@@ -236,7 +244,7 @@ print_summary() {
     echo "  Pastikan Anda telah mendaftarkan Printer Anda di CUPS Linux Anda,"
     echo "  lalu sesuaikan nama printer tersebut di file konfigurasi:"
     echo "  -> $APP_DIR/appsettings.json"
-    echo -e "${GREEN}=======================================================${NC}"
+    echo -e "${GREEN}=======================================================${NC}\"\n"
 }
 
 main() {
