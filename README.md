@@ -1,63 +1,66 @@
-# BPS Oneliner-Script (BGEN Print Service) - Clean Edition
+# BPS Oneliner-Script (BGEN Print Service) - Curl-Based Setup
 
-BPS Oneliner-Script adalah skrip otomatisasi bersih dan minimalis untuk mendeteksi distribusi Linux, menginstal dependensi Wine yang diperlukan, serta menambahkan alias sistem agar aplikasi **BPS Print Service** dapat dijalankan dengan mudah menggunakan perintah `bps-run`.
+BPS Oneliner-Script adalah solusi otomatisasi untuk menginstal dan menjalankan **BPS Print Service** (aplikasi .NET berbasis Windows) di lingkungan Linux menggunakan **Wine**.
+
+Versi terbaru ini menggunakan **`curl`** alih-alih `git clone` untuk proses instalasi yang lebih lancar, bebas dari ketergantungan Git LFS yang rawan membuat file biner `.exe` menjadi rusak (*corrupt*), serta memudahkan klien yang tidak memasang Git di komputer mereka.
 
 ---
 
-## 🚀 Cara Instalasi (Oneliner Script)
+## 🚀 Cara Instalasi Klien (Oneliner Script via Curl)
 
-Jalankan perintah satu baris berikut di terminal Linux Anda dari direktori home (`~`):
+Klien hanya perlu menyalin dan menjalankan perintah satu baris berikut di terminal Linux mereka. Perintah ini akan mengunduh skrip instalasi secara otomatis dan mengonfigurasi seluruh sistem:
 
 ```bash
-git clone https://github.com/andin1st/bps-print-service.git && cd bps-print-service && sudo ./install.sh
+curl -sSL https://raw.githubusercontent.com/andin1st/bps-print-service/main/install.sh | sudo bash
 ```
+
+*Catatan: Setelah proses instalasi selesai, muat ulang konfigurasi terminal Anda dengan perintah `source ~/.bashrc` atau `source ~/.zshrc` agar perintah instan `bps-run` aktif.*
 
 ---
 
-## 🛠️ Apa yang Dilakukan oleh `install.sh`?
+## 🛠️ Cara Kerja Skrip Pemasangan Baru
 
-1. **Deteksi Distribusi & Pasang Dependensi**:
-   - Skrip mendeteksi sistem operasi (Debian/Ubuntu, Fedora, Arch Linux) secara otomatis.
-   - Memasang paket `wine`, `wine-mono`, dan versi `wine-gecko` yang tepat secara otomatis sesuai distro target (termasuk paket khusus `mingw` di Fedora).
-2. **Konfigurasi Alias Otomatis**:
-   - Menambahkan alias `bps-run` ke berkas konfigurasi shell Anda (`.bashrc` dan/atau `.zshrc`) milik pengguna non-root.
-   - Alias tersebut terdaftar dengan perintah:
-     `alias bps-run="DISPLAY=:0 nohup wine ~/bps-print-service/BPS.exe > /tmp/bps.log 2>&1 &"`
+1. **Deteksi & Pemasangan Dependensi Otomatis**: 
+   Skrip mendeteksi sistem operasi (Fedora, Debian, Ubuntu, Arch) dan memasang paket Wine, Wine-Mono, Wine-Gecko, serta Curl yang kompatibel.
+2. **Unduhan Bersih Langsung dari GitHub Releases**:
+   Menggunakan `curl` untuk mengunduh berkas biner asli `BPS.exe` (90 MB) langsung dari **GitHub Releases** dan berkas konfigurasi `appsettings.json` langsung dari repositori utama. Langkah ini mengeliminasi masalah *corrupt file* yang sering terjadi akibat pengunduhan parser pointer Git LFS.
+3. **Konfigurasi Alias `bps-run` Otomatis**:
+   Skrip mendaftarkan perintah alias yang aman di bagian bawah berkas `.bashrc` atau `.zshrc` milik pengguna asli:
+   ```bash
+   alias bps-run="cd \$HOME/bps-print-service && DISPLAY=:0 nohup wine BPS.exe > /tmp/bps.log 2>&1 &"
+   ```
+   *Keunggulan:* Alias ini otomatis berpindah direktori (*cd*) ke folder aplikasi sebelum memanggil Wine sehingga ASP.NET Core Kestrel dapat membaca file `appsettings.json` yang berada tepat di sebelahnya secara tepat.
 
 ---
 
 ## ⚙️ Cara Penggunaan & Perintah Dasar
 
-Setelah instalasi selesai, silakan **muat ulang** sesi terminal Anda atau jalankan:
-```bash
-source ~/.bashrc  # Jika Anda menggunakan Bash
-source ~/.zshrc   # Jika Anda menggunakan Zsh
-```
-
-### Menjalankan Layanan
+### Menjalankan Layanan Printer
+Cukup jalankan perintah alias berikut dari direktori mana pun:
 ```bash
 bps-run
 ```
 
-### Menghentikan Layanan
+### Menghentikan Layanan Printer
 ```bash
 pkill -f BPS.exe
 ```
 
-### Memantau Log Aktivitas
+### Memantau Aktivitas Server Kestrel / Wine
 ```bash
 tail -f /tmp/bps.log
 ```
 
 ---
 
-## 📦 Penggunaan Git LFS (Rekomendasi Developer)
-Karena `BPS.exe` memiliki ukuran berkas yang cukup besar (~90 MB), pastikan Anda telah mengaktifkan **Git LFS** di repositori Anda sebelum melakukan push agar menghindari kegagalan upload:
-```bash
-git lfs install
-git lfs track "BPS.exe"
-git add .gitattributes
-git add -A
-git commit -m "init: setup git lfs"
-git push origin main
-```
+## ⚠️ Panduan Kritis untuk Pengembang (Developer Setup)
+
+Karena skrip ini mengunduh `BPS.exe` langsung dari fungsionalitas GitHub Releases, Anda sebagai pengembang wajib mempersiapkan hal-hal berikut agar tautan unduhan klien bekerja dengan sempurna:
+
+1. **Unggah `install.sh`**:
+   Unggah berkas `install.sh` (unduhan dari panel Studio) dan `appsettings.json` ke cabang utama (*main branch*) repositori GitHub Anda di `https://github.com/andin1st/bps-print-service`.
+2. **Buat Release Baru**:
+   Buka halaman repositori Anda di browser, klik tab **Releases** -> **Create a new release**.
+3. **Unggah Berkas BPS.exe**:
+   Tulis tag versi (misal: `v1.0.0` atau langsung publikasikan sebagai rilis terbaru) dan unggah berkas asli **`BPS.exe`** Anda (90 MB) sebagai bagian dari **Assets** rilis tersebut.
+   *Skrip instalasi akan otomatis membaca rilis terbaru Anda lewat tautan pengarah `.../releases/latest/download/BPS.exe`*.
