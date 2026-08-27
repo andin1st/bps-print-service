@@ -1,66 +1,70 @@
-# BPS Oneliner-Script (BGEN Print Service) - Curl-Based Setup
+# BPS Oneliner-Script (BGEN Print Service) - Version 6
 
-BPS Oneliner-Script adalah solusi otomatisasi untuk menginstal dan menjalankan **BPS Print Service** (aplikasi .NET berbasis Windows) di lingkungan Linux menggunakan **Wine**.
-
-Versi terbaru ini menggunakan **`curl`** alih-alih `git clone` untuk proses instalasi yang lebih lancar, bebas dari ketergantungan Git LFS yang rawan membuat file biner `.exe` menjadi rusak (*corrupt*), serta memudahkan klien yang tidak memasang Git di komputer mereka.
+BPS Oneliner-Script adalah solusi otomatisasi untuk menginstal dan menjalankan **BPS Print Service** (aplikasi .NET berbasis Windows) di lingkungan Linux menggunakan **Wine**. Script ini dirancang agar dapat mendeteksi distribusi Linux secara otomatis, menginstal dependensi yang diperlukan, melakukan konfigurasi otomatis, dan mengatur agar aplikasi berjalan secara instan.
 
 ---
 
-## 🚀 Cara Instalasi Klien (Oneliner Script via Curl)
+## 🚀 Cara Instalasi Instan (Oneliner Script)
 
-Klien hanya perlu menyalin dan menjalankan perintah satu baris berikut di terminal Linux mereka. Perintah ini akan mengunduh skrip instalasi secara otomatis dan mengonfigurasi seluruh sistem:
+Klien Anda **tidak perlu menginstal Git** atau menjalankan perintah `source` setelah instalasi. Mereka cukup menyalin dan menjalankan perintah satu baris (oneliner) berikut di terminal Linux mereka:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/andin1st/bps-print-service/main/install.sh | sudo bash
 ```
 
-*Catatan: Setelah proses instalasi selesai, muat ulang konfigurasi terminal Anda dengan perintah `source ~/.bashrc` atau `source ~/.zshrc` agar perintah instan `bps-run` aktif.*
+---
+
+## 🛠️ Apa yang Dilakukan oleh `install.sh` Secara Otomatis?
+
+1. **Deteksi Distribusi Linux**: Mendeteksi distro yang Anda gunakan secara otomatis (Arch Linux, Debian, Ubuntu, Fedora).
+2. **Instalasi Dependensi Khusus Distro**: Menginstal Wine beserta komponen pendukung utama yang kritis untuk menjalankan aplikasi .NET:
+   - `wine` (Base Wine)
+   - `wine-mono` (.NET runtime untuk Wine)
+   - Di **Fedora**: menginstal paket `mingw32-wine-gecko` dan `mingw64-wine-gecko` secara otomatis.
+   - Di **Debian/Ubuntu**: menginstal `wine-gecko` standar.
+3. **Instalasi Command Global Tanpa Perlu `source`**: 
+   - Skrip membuat berkas pembungkus (*wrapper binary*) secara otomatis di direktori sistem **`/usr/local/bin/bps-run`**.
+   - Karena `/usr/local/bin` secara bawaan sudah ada di dalam jalur pencarian aplikasi sistem (`$PATH`), klien Anda bisa **langsung memanggil perintah `bps-run` saat itu juga di terminal aktif mereka setelah instalasi selesai** tanpa perlu mengetikkan `source ~/.bashrc`!
+4. **Registrasi Alias Cadangan**: Skrip tetap mendaftarkan alias cadangan di dalam file `.bashrc` dan `.zshrc` untuk memastikan kompatibilitas jangka panjang.
 
 ---
 
-## 🛠️ Cara Kerja Skrip Pemasangan Baru
+## 📋 Struktur Repositori
 
-1. **Deteksi & Pemasangan Dependensi Otomatis**: 
-   Skrip mendeteksi sistem operasi (Fedora, Debian, Ubuntu, Arch) dan memasang paket Wine, Wine-Mono, Wine-Gecko, serta Curl yang kompatibel.
-2. **Unduhan Bersih Langsung dari GitHub Releases**:
-   Menggunakan `curl` untuk mengunduh berkas biner asli `BPS.exe` (90 MB) langsung dari **GitHub Releases** dan berkas konfigurasi `appsettings.json` langsung dari repositori utama. Langkah ini mengeliminasi masalah *corrupt file* yang sering terjadi akibat pengunduhan parser pointer Git LFS.
-3. **Konfigurasi Alias `bps-run` Otomatis**:
-   Skrip mendaftarkan perintah alias yang aman di bagian bawah berkas `.bashrc` atau `.zshrc` milik pengguna asli:
-   ```bash
-   alias bps-run="cd \$HOME/bps-print-service && DISPLAY=:0 nohup wine BPS.exe > /tmp/bps.log 2>&1 &"
-   ```
-   *Keunggulan:* Alias ini otomatis berpindah direktori (*cd*) ke folder aplikasi sebelum memanggil Wine sehingga ASP.NET Core Kestrel dapat membaca file `appsettings.json` yang berada tepat di sebelahnya secara tepat.
+```text
+bps-print-service/
+├── BPS.exe           # File eksekusi utama (diunggah melalui GitHub Releases)
+├── appsettings.json  # File konfigurasi aplikasi (termasuk PrinterName)
+├── install.sh        # Script instalasi otomatis (diunduh lewat curl)
+└── .gitignore        # Mengabaikan file log dan backup lokal
+```
 
 ---
 
 ## ⚙️ Cara Penggunaan & Perintah Dasar
 
-### Menjalankan Layanan Printer
-Cukup jalankan perintah alias berikut dari direktori mana pun:
+Setelah instalasi selesai, Anda bisa langsung mengelola layanan BPS menggunakan perintah-perintah berikut dari direktori mana saja:
+
+### Menjalankan Aplikasi Sekarang (Instan!)
 ```bash
 bps-run
 ```
 
-### Menghentikan Layanan Printer
+### Menghentikan Layanan
 ```bash
 pkill -f BPS.exe
 ```
 
-### Memantau Aktivitas Server Kestrel / Wine
-```bash
-tail -f /tmp/bps.log
-```
-
 ---
 
-## ⚠️ Panduan Kritis untuk Pengembang (Developer Setup)
+## 🔧 Konfigurasi Printer & Port
 
-Karena skrip ini mengunduh `BPS.exe` langsung dari fungsionalitas GitHub Releases, Anda sebagai pengembang wajib mempersiapkan hal-hal berikut agar tautan unduhan klien bekerja dengan sempurna:
+### 1. Mengatur Printer (CUPS)
+BPS merupakan layanan cetak berbasis jaringan. Pastikan driver printer Anda sudah terpasang dan terkonfigurasi dengan baik di **CUPS** pada mesin target. Setelah itu, perbarui nama printer pada file konfigurasi:
+- Lokasi konfigurasi setelah instalasi: `~/bps-print-service/appsettings.json`
+- Ubah parameter `\"PrinterName\"` sesuai nama printer Anda di sistem Linux.
 
-1. **Unggah `install.sh`**:
-   Unggah berkas `install.sh` (unduhan dari panel Studio) dan `appsettings.json` ke cabang utama (*main branch*) repositori GitHub Anda di `https://github.com/andin1st/bps-print-service`.
-2. **Buat Release Baru**:
-   Buka halaman repositori Anda di browser, klik tab **Releases** -> **Create a new release**.
-3. **Unggah Berkas BPS.exe**:
-   Tulis tag versi (misal: `v1.0.0` atau langsung publikasikan sebagai rilis terbaru) dan unggah berkas asli **`BPS.exe`** Anda (90 MB) sebagai bagian dari **Assets** rilis tersebut.
-   *Skrip instalasi akan otomatis membaca rilis terbaru Anda lewat tautan pengarah `.../releases/latest/download/BPS.exe`*.
+### 2. Port Jaringan
+Aplikasi ini secara bawaan membuka Kestrel endpoint pada port:
+`http://localhost:64209`
+Pastikan port ini tidak diblokir oleh firewall dan tidak sedang digunakan oleh aplikasi lain.
