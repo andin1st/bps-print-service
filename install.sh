@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # =============================================================================
-# BPS Oneliner-Script: Automated Installer (Version 5 - Ultimate)
+# BPS Oneliner-Script: Automated Installer (Version 6 - Ultimate with Autostart)
 # Features: 
 #   1. Automatic distro detection & Wine installation (Fedora, Debian, Ubuntu, Arch)
 #   2. Downloads BPS.exe and appsettings.json from GitHub using curl (No Git needed!)
 #   3. Installs a global /usr/local/bin/bps-run wrapper for INSTANT execution
-#   4. Adds shell alias fallback in .bashrc and .zshrc
-# No "source ~/.bashrc" required! Works instantly after installation.
+#   4. Sets up Desktop Autostart so the service runs automatically on boot/login!
+#   5. Adds shell alias fallback in .bashrc and .zshrc
 # =============================================================================
 
 set -euo pipefail
@@ -131,7 +131,7 @@ download_app() {
         error "Kemungkinan penyebab:"
         error "1. BPS.exe belum diunggah sebagai 'Asset' di GitHub Releases Anda."
         error "2. Tautan rilis tidak valid atau belum dipublikasikan sebagai 'Public'."
-        error "Silakan buat Release baru di https://github.com/andin1st/bps-print-service/releases dan unggah BPS.exe di sana."
+        error "Silakan buat Release baru di https://github.com/andin1st/bps-print-service/releases and unggah BPS.exe di sana."
         rm -f "$APP_DIR/BPS.exe"
         exit 1
     fi
@@ -146,12 +146,7 @@ setup_shortcuts() {
     REAL_USER="$SUDO_USER"
     USER_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
     
-    # -------------------------------------------------------------------------
-    # SOLUSI INSTAN TANPA PERLU 'source ~/.bashrc' ATAU BUKA TERMINAL BARU:
-    # Kita membuat file executable di /usr/local/bin/bps-run.
-    # Karena /usr/local/bin selalu ada di $PATH sistem, perintah 'bps-run'
-    # bisa langsung dipanggil KETIKA ITU JUGA di terminal aktif setelah install.
-    # -------------------------------------------------------------------------
+    # Membuat executable global di /usr/local/bin/bps-run
     info "Membuat perintah global 'bps-run' di /usr/local/bin..."
     
     cat << EOF > /usr/local/bin/bps-run
@@ -163,11 +158,9 @@ EOF
     chmod +x /usr/local/bin/bps-run
     info "Perintah global 'bps-run' berhasil dibuat."
 
-    # -------------------------------------------------------------------------
     # BACKUP ALIAS (Opsional untuk integrasi shell .bashrc / .zshrc)
-    # -------------------------------------------------------------------------
     info "Mendaftarkan alias cadangan ke berkas konfigurasi shell..."
-    ALIAS_CMD="alias bps-run=\\\"cd \$HOME/bps-print-service && DISPLAY=:0 nohup wine BPS.exe > /tmp/bps.log 2>&1 &\\\""
+    ALIAS_CMD="alias bps-run=\"cd \$HOME/bps-print-service && DISPLAY=:0 nohup wine BPS.exe > /tmp/bps.log 2>&1 &\""
     
     # Daftarkan ke .bashrc jika ada
     if [[ -f "$USER_HOME/.bashrc" ]]; then
@@ -188,7 +181,37 @@ EOF
     fi
 }
 
-# 6. Inisialisasi Prefiks Wine sebagai User Biasa
+# 6. Mengonfigurasi Autostart saat User Login ke Desktop
+setup_autostart() {
+    REAL_USER="$SUDO_USER"
+    USER_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
+    
+    AUTOSTART_DIR="$USER_HOME/.config/autostart"
+    
+    info "Membuat konfigurasi autostart agar BPS berjalan otomatis saat komputer menyala (login)..."
+    
+    # Buat direktori jika belum ada
+    sudo -u "$REAL_USER" mkdir -p "$AUTOSTART_DIR"
+    
+    # Buat file entri desktop autostart
+    cat << EOF > "$AUTOSTART_DIR/bps-print-service.desktop"
+[Desktop Entry]
+Type=Application
+Name=BPS Print Service
+Comment=BGEN Print Service Automation
+Exec=/usr/local/bin/bps-run
+Terminal=false
+Hidden=false
+X-GNOME-Autostart-enabled=true
+EOF
+
+    # Atur kepemilikan dan permission agar aman dan bisa dieksekusi desktop environment
+    chown "$REAL_USER:$REAL_USER" "$AUTOSTART_DIR/bps-print-service.desktop"
+    chmod +x "$AUTOSTART_DIR/bps-print-service.desktop"
+    info "Autostart berhasil diatur di: $AUTOSTART_DIR/bps-print-service.desktop"
+}
+
+# 7. Inisialisasi Prefiks Wine sebagai User Biasa
 init_wine_prefix() {
     REAL_USER="$SUDO_USER"
     info "Melakukan inisialisasi Wine Prefix untuk user '${REAL_USER}' agar berjalan lancar..."
@@ -208,6 +231,7 @@ print_summary() {
     echo ""
     echo "  Folder Aplikasi   :  $APP_DIR"
     echo "  Berkas Log        :  $LOG_FILE"
+    echo "  Autostart Setup   :  Aktif (Otomatis jalan saat komputer login)"
     echo ""
     echo "  Layanan printer Anda sekarang siap digunakan."
     echo "  Anda bisa langsung mengetik perintah berikut di terminal ini:"
@@ -224,6 +248,7 @@ main() {
     install_dependencies
     download_app
     setup_shortcuts
+    setup_autostart
     init_wine_prefix
     print_summary
 }
