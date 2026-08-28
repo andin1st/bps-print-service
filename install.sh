@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # =============================================================================
-# BPS Oneliner-Script: Automated Installer (Version 7 - Mint/Ubuntu Fixed)
+# BPS Oneliner-Script: Automated Installer (Version 7 - Ultimate with Mint Fix)
 # Features: 
 #   1. Automatic distro detection & Wine installation (Fedora, Debian, Ubuntu, Mint, Arch)
-#      - FIX: Resolves APT 'Unable to locate package wine-mono/wine-gecko' on Ubuntu/Mint!
-#   2. Downloads BPS.exe and appsettings.json from GitHub using curl (No Git needed!)
-#   3. Installs a global /usr/local/bin/bps-run wrapper for INSTANT execution
-#   4. Sets up Desktop Autostart so the service runs automatically on boot/login!
-#   5. Adds shell alias fallback in .bashrc and .zshrc
+#   2. Bypasses missing wine-mono/gecko APT packages on Debian/Ubuntu/Mint
+#   3. Pre-seeds Microsoft EULA for ttf-mscorefonts-installer to prevent hangs/stuck
+#   4. Downloads BPS.exe and appsettings.json from GitHub using curl (No Git needed!)
+#   5. Installs a global /usr/local/bin/bps-run wrapper for INSTANT execution
+#   6. Sets up Desktop Autostart so the service runs automatically on boot/login!
+#   7. Adds shell alias fallback in .bashrc and .zshrc
 # =============================================================================
 
 set -euo pipefail
@@ -58,16 +59,17 @@ install_dependencies() {
         dnf install -y wine wine-mono mingw32-wine-gecko mingw64-wine-gecko curl
         
     # Deteksi Debian / Ubuntu / Linux Mint / Pop!_OS
-    elif [[ "$DISTRO_ID" == "debian" || "$DISTRO_ID" == "ubuntu" || "$DISTRO_ID" == "linuxmint" || "$DISTRO_LIKE" == *"debian"* || "$DISTRO_LIKE" == *"ubuntu"* ]]; then
-        info "Menjalankan instalasi paket untuk Debian/Ubuntu/Linux Mint..."
+    elif [[ "$DISTRO_ID" == "debian" || "$DISTRO_ID" == "ubuntu" || "$DISTRO_LIKE" == *"debian"* || "$DISTRO_LIKE" == *"ubuntu"* ]]; then
+        info "Menjalankan instalasi paket untuk Debian/Ubuntu/Mint..."
         apt-get update
-        # CRITICAL FIX: Debian/Ubuntu tidak menyediakan wine-mono dan wine-gecko di APT.
-        # Wine akan mengunduhnya secara otomatis ke dalam prefix pada saat 'wineboot --init'.
+        # Debian/Ubuntu/Mint tidak memiliki paket wine-mono dan wine-gecko terpisah di APT.
+        # Kita hanya perlu menginstal wine dan curl; Wine akan menginstal mono/gecko secara otomatis saat startup.
         apt-get install -y wine curl
         
         # Opsional: Instal fonts Microsoft jika tersedia di sistem
         if apt-cache show ttf-mscorefonts-installer &>/dev/null; then
             info "Menginstal ttf-mscorefonts-installer..."
+            # Menyetujui Microsoft EULA secara otomatis sebelum menginstal agar tidak stuck/menggantung di terminal
             echo ttf-mscorefonts-installer msttcorefontshandler/accepted-mscorefonts-eula select true | debconf-set-selections || true
             apt-get install -y ttf-mscorefonts-installer || warn "Gagal menginstal font Microsoft Core Fonts, instalasi BPS akan tetap dilanjutkan."
         fi
@@ -79,7 +81,7 @@ install_dependencies() {
 
     else
         warn "Distribusi Linux Anda (${DISTRO_ID}) tidak terdaftar secara resmi."
-        warn "Pastikan 'wine' dan 'curl' sudah terpasang secara manual."
+        warn "Pastikan 'wine', 'wine-mono', 'wine-gecko', dan 'curl' sudah terpasang secara manual."
         read -p "Apakah Anda ingin tetap melanjutkan instalasi? [y/N]: " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -170,7 +172,7 @@ EOF
         if ! grep -q "alias bps-run=" "$USER_HOME/.bashrc"; then
             echo -e "\n# BPS Print Service Alias\n$ALIAS_CMD" >> "$USER_HOME/.bashrc"
             chown "$REAL_USER:$REAL_USER" "$USER_HOME/.bashrc"
-            info "Alias ditambahkan ke ~/.bashrc"
+            info "Alias ditambahkan ke $USER_HOME/.bashrc"
         fi
     fi
 
@@ -179,7 +181,7 @@ EOF
         if ! grep -q "alias bps-run=" "$USER_HOME/.zshrc"; then
             echo -e "\n# BPS Print Service Alias\n$ALIAS_CMD" >> "$USER_HOME/.zshrc"
             chown "$REAL_USER:$REAL_USER" "$USER_HOME/.zshrc"
-            info "Alias ditambahkan ke ~/.zshrc"
+            info "Alias ditambahkan ke $USER_HOME/.zshrc"
         fi
     fi
 }

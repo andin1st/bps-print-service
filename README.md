@@ -1,4 +1,4 @@
-# BPS Oneliner-Script (BGEN Print Service) - Version 7
+# BPS Oneliner-Script (BGEN Print Service) - Version 7 (Mint/Ubuntu Fixed)
 
 BPS Oneliner-Script adalah solusi otomatisasi untuk menginstal dan menjalankan **BPS Print Service** (aplikasi .NET berbasis Windows) di lingkungan Linux menggunakan **Wine**. Script ini dirancang agar dapat mendeteksi distribusi Linux secara otomatis, menginstal dependensi yang diperlukan, melakukan konfigurasi otomatis, dan mengatur agar aplikasi berjalan saat startup (autostart).
 
@@ -6,7 +6,7 @@ BPS Oneliner-Script adalah solusi otomatisasi untuk menginstal dan menjalankan *
 
 ## 🚀 Cara Instalasi (Oneliner Script)
 
-Anda hanya perlu menjalankan satu baris perintah berikut di terminal Linux Anda untuk mengunduh dan menjalankan instalasi secara otomatis tanpa memerlukan instalasi Git:
+Anda hanya perlu menjalankan satu baris perintah berikut di terminal Linux Anda. Tidak perlu mengunduh repositori menggunakan Git clone lagi, skrip ini akan mengurus pengunduhan berkas yang aman menggunakan **curl** langsung dari repositori publik Anda:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/andin1st/bps-print-service/main/install.sh | sudo bash
@@ -16,14 +16,29 @@ curl -sSL https://raw.githubusercontent.com/andin1st/bps-print-service/main/inst
 
 ## 🛠️ Apa yang Dilakukan oleh `install.sh` Secara Otomatis?
 
-1. **Deteksi Distribusi Linux**: Mendeteksi distro yang Anda gunakan secara otomatis (**Debian, Ubuntu, Linux Mint, Fedora, Arch Linux**).
-2. **Instalasi Dependensi Khusus Distro (Safe APT-Get)**:
-   - Di **Debian/Ubuntu/Linux Mint**: Menginstal `wine` dan `curl`. Paket `wine-mono` dan `wine-gecko` sengaja dikecualikan karena tidak tersedia di APT dan akan otomatis diunduh oleh Wine ke dalam prefix saat inisialisasi. Hal ini memperbaiki error `Unable to locate package` pada Linux Mint 21.
-   - Di **Fedora**: Menginstal `wine`, `wine-mono`, `mingw32-wine-gecko`, dan `mingw64-wine-gecko`.
-   - Di **Arch Linux**: Menginstal `wine`, `wine-mono`, dan `wine-gecko`.
-3. **Penyalinan & Pengunduhan Berkas Bebas Masalah Izin**: Membuat folder aplikasi di `~/bps-print-service/` menggunakan identitas pengguna asli untuk menghindari kesalahan izin (*permission denied*).
-4. **Instalasi Launcher Global**: Membuat script eksekusi di `/usr/local/bin/bps-run` sehingga dapat dipanggil secara langsung tanpa perlu melakukan `source` manual pada shell profil.
-5. **Autostart**: Membuat entri desktop XDG sehingga BPS Print Service otomatis berjalan saat komputer menyala/login ke lingkungan desktop.
+1. **Deteksi Distribusi Linux**: Mendeteksi distro yang Anda gunakan secara otomatis (Arch Linux, Debian, Ubuntu, Fedora, Linux Mint, dll.).
+2. **Instalasi Dependensi Cerdas**: Menginstal Wine beserta komponen pendukung utama yang kritis:
+   - Di **Fedora**: menginstal `wine`, `wine-mono`, `mingw32-wine-gecko`, `mingw64-wine-gecko`, dan `curl`.
+   - Di **Debian/Ubuntu/Linux Mint**: menginstal `wine` dan `curl` (menghindari error pencarian paket `wine-mono` atau `wine-gecko` di APT karena Debian/Ubuntu tidak menyediakan paket tersebut secara terpisah di repositori standar). Wine akan otomatis menanganinya secara aman.
+   - Di **Arch Linux**: menginstal `wine`, `wine-mono`, `wine-gecko`, dan `curl`.
+3. **Penyelesaian Masalah EULA Microsoft**: Menyuntikkan persetujuan lisensi EULA Microsoft (`ttf-mscorefonts-installer`) secara otomatis di latar belakang sebelum pemasangan, sehingga proses instalasi **tidak akan pernah stuck/gantung** menunggu konfirmasi interaktif pengguna.
+4. **Penyalinan Berkas via Curl**: Memindahkan file aplikasi `BPS.exe` (90 MB) langsung dari **GitHub Releases** dan `appsettings.json` ke direktori lokal pengguna (`~/bps-print-service/`), menjamin file biner tidak rusak (*corrupt*) oleh penunjuk Git LFS.
+5. **Membuat Wrapper Global Executable**: Menyediakan file eksekusi instan di `/usr/local/bin/bps-run` sehingga aplikasi **langsung bisa dipanggil seketika itu juga setelah instalasi selesai** tanpa perlu mengetikkan `source ~/.bashrc` atau membuka terminal baru.
+6. **Inisialisasi Prefix Wine**: Menyiapkan lingkungan Wine agar siap menjalankan aplikasi .NET.
+7. **Autostart saat Komputer Menyala**: Membuat entri desktop XDG sehingga BPS Print Service otomatis berjalan di latar belakang setiap kali pengguna masuk (*login*) ke sistem.
+
+---
+
+## 📋 Struktur Repositori
+
+```text
+bps-print-service/
+├── BPS.exe           # File eksekusi utama (aplikasi .NET ASP.NET Core Kestrel)
+├── appsettings.json  # File konfigurasi aplikasi (termasuk PrinterName)
+├── install.sh        # Script instalasi otomatis (memerlukan sudo)
+├── uninstall.sh      # Script untuk menghapus instalasi secara bersih
+└── .gitignore        # Mengabaikan file log dan backup lokal
+```
 
 ---
 
@@ -60,3 +75,14 @@ BPS merupakan layanan cetak berbasis jaringan. Pastikan driver printer Anda suda
 Aplikasi ini secara bawaan membuka Kestrel endpoint pada port:
 `http://localhost:64209`
 Pastikan port ini tidak diblokir oleh firewall dan tidak sedang digunakan oleh aplikasi lain.
+
+---
+
+## 📦 Mengatasi Kendala Upload BPS.exe ke GitHub Releases
+
+Karena ukuran file `BPS.exe` sebesar **90 MB**, dan skrip installer sekarang mengunduhnya langsung dari GitHub Releases agar biner tidak rusak/corrupt, developer harus memastikan file tersebut diunggah di bagian rilis:
+
+1. Masuk ke halaman repositori Anda di browser.
+2. Di panel kanan, klik **Releases** -> **Create a new release**.
+3. Beri tag rilis (misal `v1.0.0`) dan unggah file `BPS.exe` asli Anda ke dalam kolom **Assets** di bagian bawah.
+4. Klik **Publish release**.
