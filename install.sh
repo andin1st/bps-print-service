@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # =============================================================================
-# BPS Oneliner-Script: Automated Installer (Version 9 - Wine 9.0+ WineHQ Stable)
+# BPS Oneliner-Script: Automated Installer (Version 11 - Ultimate Multi-OS)
 # Features: 
-#   1. Automatic distro detection & WineHQ Stable (Wine 9.0+) installation
-#   2. Handles Ubuntu, Debian, and Linux Mint (Adds official WineHQ repos safely)
-#   3. NO ttf-mscorefonts-installer in auto-setup (avoids EULA hanging)
-#   4. Downloads BPS.exe and appsettings.json from GitHub using curl
-#   5. Installs a Systemd User Service to prevent hanging on shutdown/restart!
-#   6. Installs a global /usr/local/bin/bps-run service manager
+#   1. Robust OS & WineHQ Stable (Wine 9.0+) Detection (Fixes Mint 21 404 error)
+#   2. Downloads BPS.exe and appsettings.json from GitHub using curl
+#   3. Installs a Systemd User Service to prevent hanging on shutdown/restart!
+#   4. Installs a global /usr/local/bin/bps-run service manager
+#   5. NO Microsoft font auto-install to avoid EULA terminal hanging
 # =============================================================================
 
 set -euo pipefail
@@ -26,7 +25,7 @@ error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 check_root() {
     if [[ $EUID -ne 0 ]]; then
         error "Skrip ini harus dijalankan dengan hak akses root (sudo)."
-        echo "  Gunakan perintah: curl -sSL https://raw.githubusercontent.com/andin1st/bps-print-service/main/install.sh | sudo bash"
+        echo "  Gunakan perintah: curl -sSL https://raw.githubusercontent.com/andin1st/BPS/main/install.sh | sudo bash"
         exit 1
     fi
     if [[ -z "${SUDO_USER:-}" ]]; then
@@ -45,10 +44,10 @@ detect_distro() {
         DISTRO_ID="unknown"
         DISTRO_LIKE=""
     fi
-    info "Mendeteksi distribusi sistem operasi: ${DISTRO_ID}"
+    info "Mendeteksi distribusi sistem operasi: ${DISTRO_ID} (like: ${DISTRO_LIKE})"
 }
 
-# 3. Instal Wine 9.0+, curl, dan dependensi yang sesuai untuk distro target
+# 3. Instal Wine, curl, dan dependensi yang sesuai untuk distro target
 install_dependencies() {
     info "Memulai instalasi Wine (WineHQ Stable), Curl, dan dependensi pendukung..."
     
@@ -61,7 +60,7 @@ install_dependencies() {
     elif [[ "$DISTRO_ID" == "debian" || "$DISTRO_ID" == "ubuntu" || "$DISTRO_LIKE" == *"debian"* || "$DISTRO_LIKE" == *"ubuntu"* ]]; then
         info "Mengonfigurasi repositori WineHQ Stable (Wine 9.0+) untuk Debian/Ubuntu/Mint..."
         
-        # Pastikan curl terinstal terlebih dahulu
+        # Pastikan curl dan gnupg terinstal terlebih dahulu
         apt-get update
         apt-get install -y curl gnupg2 ca-certificates
         
@@ -72,34 +71,53 @@ install_dependencies() {
         mkdir -pm755 /etc/apt/keyrings
         curl -fsSL https://dl.winehq.org/wine-builds/winehq.key -o /etc/apt/keyrings/winehq-archive.key
         
-        # 3. Tentukan tipe OS (Debian vs Ubuntu)
+        # 3. Tentukan tipe OS (Debian vs Ubuntu) dengan presisi tinggi
+        # Mencegah Linux Mint terdeteksi sebagai debian murni karena ID_LIKE berisi "ubuntu debian"
         local OS_TYPE="ubuntu"
-        if [[ "$DISTRO_ID" == "debian" || "$DISTRO_LIKE" == *"debian"* ]]; then
+        if [[ "$DISTRO_ID" == "debian" ]]; then
+            OS_TYPE="debian"
+        elif [[ "$DISTRO_ID" == "linuxmint" || "$DISTRO_LIKE" == *"ubuntu"* ]]; then
+            OS_TYPE="ubuntu"
+        elif [[ "$DISTRO_LIKE" == *"debian"* ]]; then
             OS_TYPE="debian"
         fi
         
         # 4. Deteksi codename (misal: jammy, focal, noble, bookworm)
         local CODENAME=""
         if [[ -f /etc/os-release ]]; then
+            # Cek UBUNTU_CODENAME dulu karena ini yang dipakai oleh WineHQ untuk turunan Ubuntu seperti Mint
             CODENAME=$(grep -E "^UBUNTU_CODENAME=" /etc/os-release | cut -d= -f2 | tr -d '"' || echo "")
             if [[ -z "$CODENAME" ]]; then
                 CODENAME=$(grep -E "^VERSION_CODENAME=" /etc/os-release | cut -d= -f2 | tr -d '"' || echo "")
             fi
         fi
         
-        # Fallback jika codename tidak terdeteksi (misal Linux Mint / OS turunan lama)
+        # Fallback jika codename tidak terdeteksi
         if [[ -z "$CODENAME" ]]; then
             if [[ "$OS_TYPE" == "ubuntu" ]]; then
-                CODENAME="jammy" # Fallback untuk Linux Mint 21 / Ubuntu 22.04
+                CODENAME="jammy" # Fallback untuk Ubuntu 22.04 / Mint 21
             else
                 CODENAME="bookworm" # Fallback untuk Debian 12
             fi
         fi
         
+        # Koreksi khusus jika Linux Mint 21 terdeteksi virginia (Virginia adalah codename Mint, bukan Ubuntu base-nya)
+        if [[ "$DISTRO_ID" == "linuxmint" && "$CODENAME" == "virginia" ]]; then
+            CODENAME="jammy"
+        fi
+        
         info "Menambahkan sumber repositori WineHQ untuk ${OS_TYPE} (${CODENAME})..."
         
         # 5. Unduh file konfigurasi sumber repositori (.sources) resmi WineHQ
-        curl -fsSL "https://dl.winehq.org/wine-builds/${OS_TYPE}/dists/${CODENAME}/winehq-${CODENAME}.sources" -o "/etc/apt/sources.list.d/winehq-${CODENAME}.sources"
+        # URL yang benar: https://dl.winehq.org/wine-builds/ubuntu/dists/jammy/winehq-jammy.sources
+        local SOURCES_URL="https://dl.winehq.org/wine-builds/${OS_TYPE}/dists/${CODENAME}/winehq-${CODENAME}.sources"
+        local SOURCES_DEST="/etc/apt/sources.list.d/winehq-${CODENAME}.sources"
+        
+        if ! curl -fsSL "$SOURCES_URL" -o "$SOURCES_DEST"; then
+            error "Gagal mengunduh berkas sumber WineHQ dari: $SOURCES_URL"
+            error "Pastikan koneksi internet aktif dan distro Anda didukung secara resmi oleh WineHQ."
+            exit 1
+        fi
         
         # 6. Perbarui indeks paket dan pasang paket winehq-stable
         info "Menjalankan instalasi paket 'winehq-stable' (Wine 9.0+)..."
@@ -132,9 +150,9 @@ download_app() {
     
     APP_DIR="$USER_HOME/bps-print-service"
     
-    # URL Unduhan
-    BPS_EXE_URL="https://github.com/andin1st/bps-print-service/releases/latest/download/BPS.exe"
-    APP_SETTINGS_URL="https://raw.githubusercontent.com/andin1st/bps-print-service/main/appsettings.json"
+    # URL Unduhan Terarah ke Repositori Riil "BPS" alih-alih "bps-print-service"
+    BPS_EXE_URL="https://github.com/andin1st/BPS/releases/latest/download/BPS.exe"
+    APP_SETTINGS_URL="https://raw.githubusercontent.com/andin1st/BPS/main/appsettings.json"
 
     info "Mengonfigurasi direktori aplikasi untuk user: ${REAL_USER}"
     info "Target folder aplikasi: ${APP_DIR}"
@@ -145,7 +163,11 @@ download_app() {
     # Unduh berkas konfigurasi appsettings.json jika belum ada
     if [[ ! -f "$APP_DIR/appsettings.json" ]]; then
         info "Mengunduh file konfigurasi appsettings.json..."
-        sudo -u "$REAL_USER" curl -L -s -o "$APP_DIR/appsettings.json" "$APP_SETTINGS_URL"
+        if ! sudo -u "$REAL_USER" curl -L -f -s -o "$APP_DIR/appsettings.json" "$APP_SETTINGS_URL"; then
+            warn "Gagal mengunduh appsettings.json dari $APP_SETTINGS_URL."
+            warn "Mencoba fallback ke repositori alternatif..."
+            sudo -u "$REAL_USER" curl -L -f -s -o "$APP_DIR/appsettings.json" "https://raw.githubusercontent.com/andin1st/bps-print-service/main/appsettings.json" || true
+        fi
     else
         info "Berkas appsettings.json sudah ada, melewati pengunduhan."
     fi
@@ -155,9 +177,21 @@ download_app() {
     info "Ini mungkin memakan waktu beberapa saat tergantung kecepatan internet..."
     
     # Jalankan curl sebagai user asli agar hak kepemilikan file benar
-    if ! sudo -u "$REAL_USER" curl -L -# -o "$APP_DIR/BPS.exe" "$BPS_EXE_URL"; then
+    DOWNLOAD_SUCCESS=true
+    if ! sudo -u "$REAL_USER" curl -L -f -# -o "$APP_DIR/BPS.exe" "$BPS_EXE_URL"; then
+        warn "Gagal mengunduh BPS.exe dari repositori BPS."
+        info "Mencoba fallback ke repositori alternatif..."
+        if ! sudo -u "$REAL_USER" curl -L -f -# -o "$APP_DIR/BPS.exe" "https://github.com/andin1st/bps-print-service/releases/latest/download/BPS.exe"; then
+            DOWNLOAD_SUCCESS=false
+        fi
+    fi
+
+    if [[ "$DOWNLOAD_SUCCESS" == "false" ]]; then
         error "Gagal mengunduh BPS.exe!"
-        error "Pastikan Anda sudah mengunggah BPS.exe ke rilis terbaru (GitHub Releases) di repositori Anda."
+        error "Pastikan Anda sudah membuat Release di GitHub dan mengunggah BPS.exe sebagai Release Asset."
+        error "Tautan yang dicoba:"
+        error "  1. $BPS_EXE_URL"
+        error "  2. https://github.com/andin1st/bps-print-service/releases/latest/download/BPS.exe"
         exit 1
     fi
 
@@ -168,7 +202,7 @@ download_app() {
         error "Kemungkinan penyebab:"
         error "1. BPS.exe belum diunggah sebagai 'Asset' di GitHub Releases Anda."
         error "2. Tautan rilis tidak valid atau belum dipublikasikan sebagai 'Public'."
-        error "Silakan buat Release baru di https://github.com/andin1st/bps-print-service/releases dan unggah BPS.exe di sana."
+        error "Silakan buat Release baru di repositori GitHub Anda dan unggah BPS.exe di sana."
         rm -f "$APP_DIR/BPS.exe"
         exit 1
     fi
@@ -198,7 +232,6 @@ setup_systemd_service() {
     info "Wine ditemukan pada: $WINE_PATH"
 
     # Buat file bps.service
-    # Menggunakan Systemd memecahkan masalah gantung saat shutdown karena systemd akan menghentikan proses secara bersih
     cat << EOF > "$SERVICE_FILE"
 [Unit]
 Description=BPS Print Service
@@ -241,7 +274,7 @@ if [[ $EUID -eq 0 ]]; then
     exit 1
 fi
 
-ACTION="${1:-restart}"
+ACTION="${1:-status}"
 
 case "$ACTION" in
     start)
