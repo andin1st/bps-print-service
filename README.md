@@ -8,13 +8,13 @@ Versi terbaru ini menggunakan arsitektur **Systemd User Service** untuk memastik
 
 ## 🚀 Cara Instalasi (Oneliner Script)
 
-Anda hanya perlu menjalankan satu baris perintah berikut di terminal Linux Anda untuk menginstal dan mengonfigurasi segalanya secara otomatis:
+User hanya perlu menjalankan satu baris perintah berikut di terminal Linux User untuk menginstal dan mengonfigurasi segalanya secara otomatis:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/andin1st/BPS/main/install.sh | sudo bash
 ```
 
-*Catatan: Jika Anda menggunakan repositori dengan nama lain, cukup sesuaikan nama repositorinya pada URL raw di atas.*
+*Catatan: Jika User menggunakan repositori dengan nama lain, cukup sesuaikan nama repositorinya pada URL raw di atas.*
 
 ---
 
@@ -54,7 +54,7 @@ curl -sSL https://raw.githubusercontent.com/andin1st/BPS/main/install.sh | sudo 
 
 ## ⚙️ Cara Penggunaan & Perintah Dasar
 
-Setelah instalasi berhasil, Anda dapat mengelola layanan BPS menggunakan perintah mudah di terminal:
+Setelah instalasi berhasil, User dapat mengelola layanan BPS menggunakan perintah mudah di terminal:
 
 ### 1. Menjalankan Layanan Sekarang
 ```bash
@@ -77,7 +77,7 @@ bps-run log
 ```
 
 ### 5. Menghapus Instalasi (Uninstall)
-Jika Anda ingin menghapus BPS dari sistem secara bersih, jalankan script uninstall berikut dari folder repositori:
+Jika User ingin menghapus BPS dari sistem secara bersih, jalankan script uninstall berikut dari folder repositori:
 ```bash
 sudo ./uninstall.sh
 ```
@@ -87,11 +87,11 @@ sudo ./uninstall.sh
 ## 🔧 Konfigurasi Printer & Font Mandiri
 
 ### 1. Mengatur Printer (CUPS)
-Pastikan driver printer Anda sudah terpasang dan terkonfigurasi dengan baik di **CUPS** pada mesin target. Setelah itu, perbarui nama printer pada file konfigurasi:
+Pastikan driver printer User sudah terpasang dan terkonfigurasi dengan baik di **CUPS** pada mesin target. Setelah itu, perbarui nama printer pada file konfigurasi:
 - Lokasi konfigurasi setelah instalasi: `~/bps-print-service/appsettings.json`
-- Ubah parameter `"PrinterName"` sesuai nama printer Anda di sistem Linux.
+- Ubah parameter `"PrinterName"` sesuai nama printer User di sistem Linux.
 
 ### 2. Memperbaiki Font Kotak-kotak (Manual)
-Jika kertas print mengeluarkan karakter kotak-kotak atau rendering font rusak, Anda dapat memasang paket font Microsoft secara manual menggunakan perintah:
+Jika kertas print mengeluarkan karakter kotak-kotak atau rendering font rusak, User dapat memasang paket font Microsoft secara manual menggunakan perintah:
 * **Debian/Ubuntu/Linux Mint**: `sudo apt install ttf-mscorefonts-installer` (setujui lisensi yang muncul di layar).
 * **Fedora**: `sudo dnf install mscorefonts2`
