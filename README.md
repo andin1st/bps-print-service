@@ -1,8 +1,6 @@
-# BPS Oneliner-Script (BGEN Print Service) - Version 11
+# BPS Oneliner-Script (BGEN Print Service)
 
 BPS Oneliner-Script adalah solusi otomatisasi untuk menginstal dan menjalankan **BPS Print Service** (aplikasi .NET berbasis Windows) di lingkungan Linux menggunakan **Wine**. 
-
-Versi terbaru ini menggunakan arsitektur **Systemd User Service** untuk memastikan kestabilan tinggi, otomatis menyala saat komputer dinyalakan, dan yang paling penting **mengatasi masalah sistem Linux gantung (stuck) saat shutdown** yang disebabkan oleh proses emulasi Wine di latar belakang.
 
 ---
 
