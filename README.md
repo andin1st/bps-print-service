@@ -1,8 +1,10 @@
-# BPS Oneliner-Script (BGEN Print Service) - Version 8
+# BPS Oneliner-Script (BGEN Print Service) - Version 9
 
 BPS Oneliner-Script adalah solusi otomatisasi untuk menginstal dan menjalankan **BPS Print Service** (aplikasi .NET berbasis Windows) di lingkungan Linux menggunakan **Wine**. 
 
-Versi terbaru ini menggunakan arsitektur **Systemd User Service** untuk memastikan kestabilan tinggi, otomatis menyala saat komputer dinyalakan, dan yang paling penting **mengatasi masalah sistem Linux gantung (stuck) saat shutdown** yang disebabkan oleh proses emulasi Wine di latar belakang.
+Versi 9 ini menghadirkan peningkatan besar pada aspek kompatibilitas dengan **secara otomatis memasang WineHQ Stable (Wine 9.0+)** pada distribusi berbasis Debian, Ubuntu, dan Linux Mint. Langkah ini terbukti sukses **mengatasi error `page fault` (crash instan)** yang kerap ditemui pada Wine versi lama (seperti bawaan Ubuntu/Mint versi 6.0.3).
+
+Selain itu, versi ini menggunakan arsitektur **Systemd User Service** untuk memastikan kestabilan tinggi, otomatis menyala saat komputer dinyalakan, dan mencegah masalah sistem Linux gantung (stuck) saat shutdown.
 
 ---
 
@@ -21,12 +23,14 @@ curl -sSL https://raw.githubusercontent.com/andin1st/bps-print-service/main/inst
 ## 🛠️ Apa yang Dilakukan oleh `install.sh` Secara Otomatis?
 
 1. **Deteksi Distribusi Linux**: Mendeteksi distribusi OS secara otomatis (Arch Linux, Debian, Ubuntu, Fedora, Linux Mint 21).
-2. **Pemasangan Paket Wine Bebas Hambatan**: Memasang dependensi Wine dan Curl yang sesuai dengan distro target Anda. 
+2. **Pemasangan WineHQ Stable (Wine 9.0+) secara Otomatis**: 
+   - Pada **Debian/Ubuntu/Mint**, skrip akan mengaktifkan arsitektur 32-bit, mengimpor kunci GPG WineHQ, mendeteksi codename OS secara dinamis, menambahkan repositori resmi WineHQ, dan memasang paket `winehq-stable` (Wine 9.0+). Ini menjamin fungsionalitas .NET modern berjalan stabil tanpa crash.
+   - Pada **Fedora dan Arch Linux**, skrip akan memasang Wine terbaru langsung dari repositori resmi distro yang sudah diperbarui.
 3. **Download Mandiri Bebas Corrupt**: Mengunduh `BPS.exe` (90 MB) secara aman langsung dari **GitHub Releases** dan file konfigurasi `appsettings.json` langsung ke folder `~/bps-print-service/`.
 4. **Integrasi Systemd User Service**: Mendaftarkan `BPS.exe` sebagai layanan Systemd pengguna (`bps.service`). Ini memastikan:
    - Aplikasi otomatis menyala di latar belakang saat komputer menyala/login.
-   - **Shutdown Aman**: Systemd menjamin penutupan proses secara bersih tanpa menahan atau membuat sistem operasi gantung (stuck) saat shutdown.
-   - **Auto-restart**: Jika aplikasi mengalami crash tak terduga, Systemd akan langsung menghidupkannya kembali dalam waktu 5 detik.
+   - **Shutdown Aman**: Systemd menjamin penutupan proses secara bersih tanpa menahan atau membuat sistem gantung saat shutdown.
+   - **Auto-restart**: Jika aplikasi mengalami crash tak terduga, Systemd akan langsung menghidupkannya kembali dalam waktu 5 s.
 5. **Membuat Executable Global Manager**: Menyediakan file `/usr/local/bin/bps-run` yang bertindak sebagai manager service interaktif. Anda bisa langsung memakainya seketika setelah instalasi selesai **tanpa perlu memanggil `source ~/.bashrc`** atau membuka terminal baru!
 
 ---
@@ -39,9 +43,7 @@ curl -sSL https://raw.githubusercontent.com/andin1st/bps-print-service/main/inst
 └── appsettings.json  # File konfigurasi printer (PrinterName)
 ```
 
----
-
-## ⚙️ Cara Penggunaan & Perintah Dasar
+---\n\n## ⚙️ Cara Penggunaan & Perintah Dasar
 
 Setelah instalasi berhasil, Anda dapat mengelola layanan BPS menggunakan perintah mudah di terminal:
 
@@ -83,7 +85,7 @@ sudo ./uninstall.sh
 ### 1. Mengatur Printer (CUPS)
 Pastikan driver printer Anda sudah terpasang dan terkonfigurasi dengan baik di **CUPS** pada mesin target. Setelah itu, perbarui nama printer pada file konfigurasi:
 - Lokasi konfigurasi setelah instalasi: `~/bps-print-service/appsettings.json`
-- Ubah parameter `"PrinterName"` sesuai nama printer Anda di sistem Linux.
+- Ubah parameter `\"PrinterName\"` sesuai nama printer Anda di sistem Linux.
 
 ### 2. Memperbaiki Font Kotak-kotak (Manual)
 Untuk menghindari dialog persetujuan lisensi (EULA) Microsoft yang kerap membuat instalasi otomatis terhenti (*stuck*), instalasi font Microsoft ditiadakan dari skrip otomatis. 
