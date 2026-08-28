@@ -1,88 +1,104 @@
-# BPS Oneliner-Script (BGEN Print Service) - Version 7 (Mint/Ubuntu Fixed)
+# BPS Oneliner-Script (BGEN Print Service) - Version 8
 
-BPS Oneliner-Script adalah solusi otomatisasi untuk menginstal dan menjalankan **BPS Print Service** (aplikasi .NET berbasis Windows) di lingkungan Linux menggunakan **Wine**. Script ini dirancang agar dapat mendeteksi distribusi Linux secara otomatis, menginstal dependensi yang diperlukan, melakukan konfigurasi otomatis, dan mengatur agar aplikasi berjalan saat startup (autostart).
+BPS Oneliner-Script adalah solusi otomatisasi untuk menginstal dan menjalankan **BPS Print Service** (aplikasi .NET berbasis Windows) di lingkungan Linux menggunakan **Wine**. 
+
+Versi terbaru ini menggunakan arsitektur **Systemd User Service** untuk memastikan kestabilan tinggi, otomatis menyala saat komputer dinyalakan, dan yang paling penting **mengatasi masalah sistem Linux gantung (stuck) saat shutdown** yang disebabkan oleh proses emulasi Wine di latar belakang.
 
 ---
 
 ## 🚀 Cara Instalasi (Oneliner Script)
 
-Anda hanya perlu menjalankan satu baris perintah berikut di terminal Linux Anda. Tidak perlu mengunduh repositori menggunakan Git clone lagi, skrip ini akan mengurus pengunduhan berkas yang aman menggunakan **curl** langsung dari repositori publik Anda:
+Anda hanya perlu menjalankan satu baris perintah berikut di terminal Linux Anda untuk menginstal dan mengonfigurasi segalanya secara otomatis:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/andin1st/bps-print-service/main/install.sh | sudo bash
 ```
 
+*Catatan: Metode instalasi berbasis `curl` ini menghilangkan ketergantungan terhadap Git pada sisi klien dan mencegah kerusakan file biner `BPS.exe` akibat masalah pembacaan pointer Git LFS.*
+
 ---
 
 ## 🛠️ Apa yang Dilakukan oleh `install.sh` Secara Otomatis?
 
-1. **Deteksi Distribusi Linux**: Mendeteksi distro yang Anda gunakan secara otomatis (Arch Linux, Debian, Ubuntu, Fedora, Linux Mint, dll.).
-2. **Instalasi Dependensi Cerdas**: Menginstal Wine beserta komponen pendukung utama yang kritis:
-   - Di **Fedora**: menginstal `wine`, `wine-mono`, `mingw32-wine-gecko`, `mingw64-wine-gecko`, dan `curl`.
-   - Di **Debian/Ubuntu/Linux Mint**: menginstal `wine` dan `curl` (menghindari error pencarian paket `wine-mono` atau `wine-gecko` di APT karena Debian/Ubuntu tidak menyediakan paket tersebut secara terpisah di repositori standar). Wine akan otomatis menanganinya secara aman.
-   - Di **Arch Linux**: menginstal `wine`, `wine-mono`, `wine-gecko`, dan `curl`.
-3. **Penyelesaian Masalah EULA Microsoft**: Menyuntikkan persetujuan lisensi EULA Microsoft (`ttf-mscorefonts-installer`) secara otomatis di latar belakang sebelum pemasangan, sehingga proses instalasi **tidak akan pernah stuck/gantung** menunggu konfirmasi interaktif pengguna.
-4. **Penyalinan Berkas via Curl**: Memindahkan file aplikasi `BPS.exe` (90 MB) langsung dari **GitHub Releases** dan `appsettings.json` ke direktori lokal pengguna (`~/bps-print-service/`), menjamin file biner tidak rusak (*corrupt*) oleh penunjuk Git LFS.
-5. **Membuat Wrapper Global Executable**: Menyediakan file eksekusi instan di `/usr/local/bin/bps-run` sehingga aplikasi **langsung bisa dipanggil seketika itu juga setelah instalasi selesai** tanpa perlu mengetikkan `source ~/.bashrc` atau membuka terminal baru.
-6. **Inisialisasi Prefix Wine**: Menyiapkan lingkungan Wine agar siap menjalankan aplikasi .NET.
-7. **Autostart saat Komputer Menyala**: Membuat entri desktop XDG sehingga BPS Print Service otomatis berjalan di latar belakang setiap kali pengguna masuk (*login*) ke sistem.
+1. **Deteksi Distribusi Linux**: Mendeteksi distribusi OS secara otomatis (Arch Linux, Debian, Ubuntu, Fedora, Linux Mint 21).
+2. **Pemasangan Paket Wine Bebas Hambatan**: Memasang dependensi Wine dan Curl yang sesuai dengan distro target Anda. 
+3. **Download Mandiri Bebas Corrupt**: Mengunduh `BPS.exe` (90 MB) secara aman langsung dari **GitHub Releases** dan file konfigurasi `appsettings.json` langsung ke folder `~/bps-print-service/`.
+4. **Integrasi Systemd User Service**: Mendaftarkan `BPS.exe` sebagai layanan Systemd pengguna (`bps.service`). Ini memastikan:
+   - Aplikasi otomatis menyala di latar belakang saat komputer menyala/login.
+   - **Shutdown Aman**: Systemd menjamin penutupan proses secara bersih tanpa menahan atau membuat sistem operasi gantung (stuck) saat shutdown.
+   - **Auto-restart**: Jika aplikasi mengalami crash tak terduga, Systemd akan langsung menghidupkannya kembali dalam waktu 5 detik.
+5. **Membuat Executable Global Manager**: Menyediakan file `/usr/local/bin/bps-run` yang bertindak sebagai manager service interaktif. Anda bisa langsung memakainya seketika setelah instalasi selesai **tanpa perlu memanggil `source ~/.bashrc`** atau membuka terminal baru!
 
 ---
 
-## 📋 Struktur Repositori
+## 📋 Struktur Repositori Terinstal (`~/bps-print-service`)
 
 ```text
-bps-print-service/
-├── BPS.exe           # File eksekusi utama (aplikasi .NET ASP.NET Core Kestrel)
-├── appsettings.json  # File konfigurasi aplikasi (termasuk PrinterName)
-├── install.sh        # Script instalasi otomatis (memerlukan sudo)
-├── uninstall.sh      # Script untuk menghapus instalasi secara bersih
-└── .gitignore        # Mengabaikan file log dan backup lokal
+~/bps-print-service/
+├── BPS.exe           # File eksekusi utama (.NET Core)
+└── appsettings.json  # File konfigurasi printer (PrinterName)
 ```
 
 ---
 
 ## ⚙️ Cara Penggunaan & Perintah Dasar
 
-Setelah instalasi berhasil, Anda bisa mengelola layanan BPS menggunakan perintah-perintah berikut:
+Setelah instalasi berhasil, Anda dapat mengelola layanan BPS menggunakan perintah mudah di terminal:
 
-### Menjalankan Aplikasi Sekarang
+### 1. Menjalankan Layanan Sekarang
 ```bash
-bps-run
+bps-run start
 ```
 
-### Menghentikan Layanan
+### 2. Menghentikan Layanan
 ```bash
-pkill -f BPS.exe
+bps-run stop
 ```
 
-### Menghapus Instalasi (Uninstall)
-Jika Anda ingin menghapus BPS dari sistem secara bersih, jalankan script uninstall dengan akses root:
+### 3. Memuat Ulang Layanan (Restart)
+```bash
+bps-run restart
+```
+
+### 4. Memeriksa Status Layanan
+```bash
+bps-run status
+```
+
+### 5. Memantau Log Aktivitas Cetak
+```bash
+bps-run log
+```
+
+### 6. Menghapus Instalasi (Uninstall)
+Jika Anda ingin menghapus BPS dari sistem secara bersih, jalankan script uninstall berikut dari folder repositori:
 ```bash
 sudo ./uninstall.sh
 ```
 
 ---
 
-## 🔧 Konfigurasi Printer & Port
+## 🔧 Konfigurasi Printer & Font Mandiri
 
 ### 1. Mengatur Printer (CUPS)
-BPS merupakan layanan cetak berbasis jaringan. Pastikan driver printer Anda sudah terpasang dan terkonfigurasi dengan baik di **CUPS** pada mesin target. Setelah itu, perbarui nama printer pada file konfigurasi:
+Pastikan driver printer Anda sudah terpasang dan terkonfigurasi dengan baik di **CUPS** pada mesin target. Setelah itu, perbarui nama printer pada file konfigurasi:
 - Lokasi konfigurasi setelah instalasi: `~/bps-print-service/appsettings.json`
 - Ubah parameter `"PrinterName"` sesuai nama printer Anda di sistem Linux.
 
-### 2. Port Jaringan
-Aplikasi ini secara bawaan membuka Kestrel endpoint pada port:
-`http://localhost:64209`
-Pastikan port ini tidak diblokir oleh firewall dan tidak sedang digunakan oleh aplikasi lain.
+### 2. Memperbaiki Font Kotak-kotak (Manual)
+Untuk menghindari dialog persetujuan lisensi (EULA) Microsoft yang kerap membuat instalasi otomatis terhenti (*stuck*), instalasi font Microsoft ditiadakan dari skrip otomatis. 
+
+Jika kertas print mengeluarkan karakter kotak-kotak atau rendering font rusak, Anda dapat memasang paket font Microsoft secara manual menggunakan perintah:
+* **Debian/Ubuntu/Linux Mint**: `sudo apt install ttf-mscorefonts-installer` (setujui lisensi yang muncul di layar).
+* **Fedora**: `sudo dnf install mscorefonts2`
 
 ---
 
-## 📦 Mengatasi Kendala Upload BPS.exe ke GitHub Releases
+## 📦 Mengunggah Berkas BPS.exe ke GitHub Releases (Developer Only)
 
-Karena ukuran file `BPS.exe` sebesar **90 MB**, dan skrip installer sekarang mengunduhnya langsung dari GitHub Releases agar biner tidak rusak/corrupt, developer harus memastikan file tersebut diunggah di bagian rilis:
+Agar tautan pengunduhan biner `BPS.exe` bekerja sempurna bagi seluruh klien Anda, Anda **harus** mengunggah berkas `BPS.exe` biner asli Anda ke halaman Rilis:
 
-1. Masuk ke halaman repositori Anda di browser.
-2. Di panel kanan, klik **Releases** -> **Create a new release**.
-3. Beri tag rilis (misal `v1.0.0`) dan unggah file `BPS.exe` asli Anda ke dalam kolom **Assets** di bagian bawah.
-4. Klik **Publish release**.
+1. Buka halaman repositori Anda di browser.
+2. Klik menu **Releases** di sisi kanan, lalu pilih **Create a new release**.
+3. Beri nama tag versi (misal: `v1.0.0`) dan jadikan sebagai rilis terbaru (*Latest Release*).
+4. Di bagian pengunggahan berkas, seret dan taruh file **`BPS.exe` (90 MB)** Anda sebagai **Assets**, lalu klik **Publish release**.

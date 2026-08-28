@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 # =============================================================================
-# BPS Oneliner-Script: Automated Installer (Version 7 - Ultimate with Mint Fix)
+# BPS Oneliner-Script: Automated Installer (Version 8 - Systemd Service)
 # Features: 
-#   1. Automatic distro detection & Wine installation (Fedora, Debian, Ubuntu, Mint, Arch)
-#   2. Bypasses missing wine-mono/gecko APT packages on Debian/Ubuntu/Mint
-#   3. Pre-seeds Microsoft EULA for ttf-mscorefonts-installer to prevent hangs/stuck
-#   4. Downloads BPS.exe and appsettings.json from GitHub using curl (No Git needed!)
-#   5. Installs a global /usr/local/bin/bps-run wrapper for INSTANT execution
-#   6. Sets up Desktop Autostart so the service runs automatically on boot/login!
-#   7. Adds shell alias fallback in .bashrc and .zshrc
+#   1. Automatic distro detection & Wine installation (Fedora, Debian, Ubuntu, Arch)
+#   2. NO ttf-mscorefonts-installer (manual user installation if needed)
+#   3. Downloads BPS.exe and appsettings.json from GitHub using curl (No Git needed!)
+#   4. Installs a Systemd User Service to prevent hanging on shutdown/restart!
+#   5. Installs a global /usr/local/bin/bps-run service manager
 # =============================================================================
 
 set -euo pipefail
@@ -62,26 +60,18 @@ install_dependencies() {
     elif [[ "$DISTRO_ID" == "debian" || "$DISTRO_ID" == "ubuntu" || "$DISTRO_LIKE" == *"debian"* || "$DISTRO_LIKE" == *"ubuntu"* ]]; then
         info "Menjalankan instalasi paket untuk Debian/Ubuntu/Mint..."
         apt-get update
-        # Debian/Ubuntu/Mint tidak memiliki paket wine-mono dan wine-gecko terpisah di APT.
-        # Kita hanya perlu menginstal wine dan curl; Wine akan menginstal mono/gecko secara otomatis saat startup.
+        # Catatan: Hanya menginstal wine dan curl. Mono/Gecko diurus otomatis secara dinamis oleh Wine.
+        # Menghapus instalasi ttf-mscorefonts-installer agar tidak terjadi dialog EULA yang menggantung.
         apt-get install -y wine curl
         
-        # Opsional: Instal fonts Microsoft jika tersedia di sistem
-        if apt-cache show ttf-mscorefonts-installer &>/dev/null; then
-            info "Menginstal ttf-mscorefonts-installer..."
-            # Menyetujui Microsoft EULA secara otomatis sebelum menginstal agar tidak stuck/menggantung di terminal
-            echo ttf-mscorefonts-installer msttcorefontshandler/accepted-mscorefonts-eula select true | debconf-set-selections || true
-            apt-get install -y ttf-mscorefonts-installer || warn "Gagal menginstal font Microsoft Core Fonts, instalasi BPS akan tetap dilanjutkan."
-        fi
-
     # Deteksi Arch Linux / Manjaro
-    elif [[ "$DISTRO_ID" == "arch" || "$DISTRO_LIKE" == *"arch"* ]]; then
+    elif [[ "$DISTRO_ID" == "$DISTRO_ID" || "$DISTRO_LIKE" == *"arch"* ]]; then
         info "Menjalankan instalasi paket untuk Arch Linux..."
-        pacman -Syu --noconfirm wine wine-mono wine-gecko curl
+        pacman -Syu --noconfirm wine curl
 
     else
         warn "Distribusi Linux Anda (${DISTRO_ID}) tidak terdaftar secara resmi."
-        warn "Pastikan 'wine', 'wine-mono', 'wine-gecko', dan 'curl' sudah terpasang secara manual."
+        warn "Pastikan 'wine' dan 'curl' sudah terpasang secara manual."
         read -p "Apakah Anda ingin tetap melanjutkan instalasi? [y/N]: " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -146,77 +136,98 @@ download_app() {
     chmod +x "$APP_DIR/BPS.exe"
 }
 
-# 5. Buat Perintah Global & Konfigurasi Alias
-setup_shortcuts() {
+# 5. Konfigurasi Systemd User Service & Wrapper bps-run
+setup_systemd_service() {
     REAL_USER="$SUDO_USER"
     USER_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
+    USER_ID=$(getent passwd "$REAL_USER" | cut -d: -f3)
     
-    # Membuat executable global di /usr/local/bin/bps-run
+    SYSTEMD_DIR="$USER_HOME/.config/systemd/user"
+    SERVICE_FILE="$SYSTEMD_DIR/bps.service"
+
+    info "Mengonfigurasi Systemd User Service..."
+    
+    # Buat folder konfigurasi systemd user jika belum ada
+    sudo -u "$REAL_USER" mkdir -p "$SYSTEMD_DIR"
+
+    # Buat file bps.service
+    # Menggunakan Systemd memecahkan masalah gantung saat shutdown karena systemd akan menghentikan proses secara bersih
+    cat << EOF > "$SERVICE_FILE"
+[Unit]
+Description=BPS Print Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/bps-print-service
+Environment=DISPLAY=:0
+ExecStart=/usr/bin/wine BPS.exe
+Restart=always
+RestartSec=5
+StandardOutput=append:/tmp/bps.log
+StandardError=append:/tmp/bps.log
+
+[Install]
+WantedBy=default.target
+EOF
+
+    # Sesuaikan kepemilikan file service
+    chown "$REAL_USER:$REAL_USER" "$SERVICE_FILE"
+
+    # Aktifkan service di lingkungan systemd user
+    info "Mengaktifkan service bps.service di systemd..."
+    sudo -u "$REAL_USER" env XDG_RUNTIME_DIR="/run/user/$USER_ID" systemctl --user daemon-reload
+    sudo -u "$REAL_USER" env XDG_RUNTIME_DIR="/run/user/$USER_ID" systemctl --user enable bps.service
+
+    # Membuat executable global di /usr/local/bin/bps-run sebagai manager service
     info "Membuat perintah global 'bps-run' di /usr/local/bin..."
     
-    cat << EOF > /usr/local/bin/bps-run
+    cat << 'EOF' > /usr/local/bin/bps-run
 #!/usr/bin/env bash
-# Jalankan menggunakan profil user asli agar konfigurasi Wine terisolasi dengan benar
-cd "$USER_HOME/bps-print-service" && DISPLAY=:0 nohup wine BPS.exe > /tmp/bps.log 2>&1 &
+# =============================================================================
+# BPS Print Service Manager
+# =============================================================================
+
+if [[ $EUID -eq 0 ]]; then
+    echo "[ERROR] Jangan jalankan bps-run dengan sudo!" >&2
+    echo "        Cukup jalankan sebagai user biasa: bps-run [start|stop|restart|status]" >&2
+    exit 1
+fi
+
+ACTION="${1:-restart}"
+
+case "$ACTION" in
+    start)
+        systemctl --user start bps.service
+        echo "[INFO] Layanan BPS Print Service berhasil dijalankan."
+        ;;
+    stop)
+        systemctl --user stop bps.service
+        echo "[INFO] Layanan BPS Print Service berhasil dihentikan."
+        ;;
+    restart)
+        systemctl --user restart bps.service
+        echo "[INFO] Layanan BPS Print Service berhasil dimuat ulang (restarted)."
+        ;;
+    status)
+        systemctl --user status bps.service
+        ;;
+    log)
+        echo "[INFO] Menampilkan log aktivitas (tekan Ctrl+C untuk keluar):"
+        tail -f /tmp/bps.log
+        ;;
+    *)
+        echo "Penggunaan: bps-run [start|stop|restart|status|log]"
+        exit 1
+        ;;
+esac
 EOF
 
     chmod +x /usr/local/bin/bps-run
     info "Perintah global 'bps-run' berhasil dibuat."
-
-    # BACKUP ALIAS (Opsional untuk integrasi shell .bashrc / .zshrc)
-    info "Mendaftarkan alias cadangan ke berkas konfigurasi shell..."
-    ALIAS_CMD="alias bps-run=\"cd \$HOME/bps-print-service && DISPLAY=:0 nohup wine BPS.exe > /tmp/bps.log 2>&1 &\""
-    
-    # Daftarkan ke .bashrc jika ada
-    if [[ -f "$USER_HOME/.bashrc" ]]; then
-        if ! grep -q "alias bps-run=" "$USER_HOME/.bashrc"; then
-            echo -e "\n# BPS Print Service Alias\n$ALIAS_CMD" >> "$USER_HOME/.bashrc"
-            chown "$REAL_USER:$REAL_USER" "$USER_HOME/.bashrc"
-            info "Alias ditambahkan ke $USER_HOME/.bashrc"
-        fi
-    fi
-
-    # Daftarkan ke .zshrc jika ada
-    if [[ -f "$USER_HOME/.zshrc" ]]; then
-        if ! grep -q "alias bps-run=" "$USER_HOME/.zshrc"; then
-            echo -e "\n# BPS Print Service Alias\n$ALIAS_CMD" >> "$USER_HOME/.zshrc"
-            chown "$REAL_USER:$REAL_USER" "$USER_HOME/.zshrc"
-            info "Alias ditambahkan ke $USER_HOME/.zshrc"
-        fi
-    fi
 }
 
-# 6. Mengonfigurasi Autostart saat User Login ke Desktop
-setup_autostart() {
-    REAL_USER="$SUDO_USER"
-    USER_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
-    
-    AUTOSTART_DIR="$USER_HOME/.config/autostart"
-    
-    info "Membuat konfigurasi autostart agar BPS berjalan otomatis saat komputer menyala (login)..."
-    
-    # Buat direktori jika belum ada
-    sudo -u "$REAL_USER" mkdir -p "$AUTOSTART_DIR"
-    
-    # Buat file entri desktop autostart
-    cat << EOF > "$AUTOSTART_DIR/bps-print-service.desktop"
-[Desktop Entry]
-Type=Application
-Name=BPS Print Service
-Comment=BGEN Print Service Automation
-Exec=/usr/local/bin/bps-run
-Terminal=false
-Hidden=false
-X-GNOME-Autostart-enabled=true
-EOF
-
-    # Atur kepemilikan dan permission agar aman dan bisa dieksekusi desktop environment
-    chown "$REAL_USER:$REAL_USER" "$AUTOSTART_DIR/bps-print-service.desktop"
-    chmod +x "$AUTOSTART_DIR/bps-print-service.desktop"
-    info "Autostart berhasil diatur di: $AUTOSTART_DIR/bps-print-service.desktop"
-}
-
-# 7. Inisialisasi Prefiks Wine sebagai User Biasa
+# 6. Inisialisasi Prefiks Wine sebagai User Biasa
 init_wine_prefix() {
     REAL_USER="$SUDO_USER"
     info "Melakukan inisialisasi Wine Prefix untuk user '${REAL_USER}' agar berjalan lancar..."
@@ -236,14 +247,17 @@ print_summary() {
     echo ""
     echo "  Folder Aplikasi   :  $APP_DIR"
     echo "  Berkas Log        :  $LOG_FILE"
-    echo "  Autostart Setup   :  Aktif (Otomatis jalan saat komputer login)"
+    echo "  Autostart Setup   :  Aktif via Systemd User Service (Otomatis jalan saat login/boot)"
+    echo "  Font Microsoft    :  Dilewati (Silakan instal ttf-mscorefonts-installer manual jika font kotak-kotak)"
     echo ""
     echo "  Layanan printer Anda sekarang siap digunakan."
     echo "  Anda bisa langsung mengetik perintah berikut di terminal ini:"
     echo ""
-    echo -e "    ${YELLOW}bps-run${NC}"
+    echo -e "    ${YELLOW}bps-run start${NC}   <- Menjalankan layanan"
+    echo -e "    ${YELLOW}bps-run stop${NC}    <- Menghentikan layanan"
+    echo -e "    ${YELLOW}bps-run status${NC}  <- Memeriksa status layanan"
+    echo -e "    ${YELLOW}bps-run log${NC}     <- Melihat log aktivitas"
     echo ""
-    echo "  (Tanpa perlu melakukan 'source ~/.bashrc' atau membuka terminal baru!)"
     echo -e "${GREEN}=======================================================${NC}"
 }
 
@@ -252,8 +266,7 @@ main() {
     detect_distro
     install_dependencies
     download_app
-    setup_shortcuts
-    setup_autostart
+    setup_systemd_service
     init_wine_prefix
     print_summary
 }
